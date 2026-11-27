@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+.venv/
+# Prüfstück-Fotos und Exporte nicht einchecken
+*.jpg
+*.jpeg
+*.png
+!assets/*.png
