@@ -54,9 +54,13 @@ class Api:
 
 def main() -> None:
     api = Api()
+    # Oberfläche direkt als HTML übergeben (kein lokaler Webserver auf
+    # 127.0.0.1 – der wird in Firmennetzen oft von Proxy/Firewall blockiert).
+    with open(resource_path("app", "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
     window = webview.create_window(
         APP_TITLE,
-        url=resource_path("app", "index.html"),
+        html=html,
         js_api=api,
         width=1400,
         height=900,
