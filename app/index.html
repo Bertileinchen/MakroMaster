@@ -48,9 +48,11 @@ kbd{background:#2b3036;border:1px solid #3a4048;border-radius:3px;padding:0 4px;
   <h1>Makroschliff-Aufbereitung</h1>
   <div class="note">Läuft vollständig lokal – das Foto wird nirgends hochgeladen. <span id="ver"></span></div>
 
-  <details open id="sec-load"><summary>1 · Foto laden</summary>
+  <details open id="sec-load"><summary>1 · Foto / Projekt</summary>
     <div class="btns"><button id="btnLoad">Foto öffnen …</button><input type="file" id="file" accept="image/*" hidden></div>
-    <div class="note" id="imgInfo">Oder Foto auf die Arbeitsfläche ziehen.</div>
+    <div class="btns"><button id="btnProjOpen">Projekt öffnen …</button><button id="btnProjSave">Projekt speichern …</button><input type="file" id="projFile" accept=".makro,.json" hidden></div>
+    <div class="note" id="imgInfo">Oder Foto bzw. Projektdatei auf die Arbeitsfläche ziehen.</div>
+    <div class="note">Ein Projekt enthält das Originalfoto und alle Schritte – das Foto selbst kann danach gelöscht werden.</div>
   </details>
 
   <details open><summary>2 · Ausrichten &amp; Zuschneiden</summary>
@@ -64,7 +66,7 @@ kbd{background:#2b3036;border:1px solid #3a4048;border-radius:3px;padding:0 4px;
     <div class="btns"><button id="btnMask" data-mode="mask">Kontur setzen</button><button id="btnMaskClear">Kontur löschen</button></div>
     <div class="chk"><input type="checkbox" id="maskWire" checked><label for="maskWire">Kontur folgt Probenkante (Live-Wire)</label></div>
     <div class="chk"><input type="checkbox" id="maskSnap" checked><label for="maskSnap">Punkte an Kanten einrasten</label></div>
-    <div class="row"><label>Hintergrund</label><select id="bgMode"><option value="black">Schwarz</option><option value="dark">Dunkelgrau</option><option value="white">Weiß</option><option value="dim">Original abgedunkelt</option></select></div>
+    <div class="row"><label>Hintergrund</label><select id="bgMode"><option value="dim" selected>Original abgedunkelt</option><option value="black">Schwarz</option><option value="dark">Dunkelgrau</option><option value="white">Weiß</option></select></div>
     <div class="note">Rund um die Probe klicken (4–10 Punkte reichen, an Ecken einen setzen) – dazwischen folgt die Kontur der Kante. Klick auf ersten Punkt oder <kbd>Enter</kbd> = schließen. Punkte ziehbar, Rechtsklick löscht Punkt, <kbd>⌫</kbd> letzten Punkt.</div>
   </details>
 
@@ -79,7 +81,11 @@ kbd{background:#2b3036;border:1px solid #3a4048;border-radius:3px;padding:0 4px;
     <div class="row"><label>Entrauschen</label><input type="range" id="p_dn" min="0" max="3" step="0.1" value="0.8"><output></output></div>
     <div class="row"><label>Schärfen</label><input type="range" id="p_sh" min="0" max="2" step="0.05" value="0.5"><output></output></div>
     <div class="row"><label>Schärferadius</label><input type="range" id="p_shR" min="0.5" max="6" step="0.1" value="2"><output></output></div>
-    <div class="btns"><button id="btnAuto" class="on">Auto</button><button id="btnDefaults">Standardwerte</button><button id="btnCompare">Original zeigen (<kbd>O</kbd>)</button></div>
+    <div class="btns"><button id="btnApply" class="on">Aufbereiten</button><button id="btnAuto">Auto</button><button id="btnReset">Reset</button></div>
+    <div class="note" id="stateInfo">Bild unverändert (Original).</div>
+    <div class="row"><label>Regler wirken auf</label><select id="srcMode"><option value="orig">Originalbild</option><option value="enh">verbessertes Bild</option></select></div>
+    <div class="note">„verbessertes Bild“: der aktuelle Stand wird übernommen, die Regler arbeiten darauf weiter (Regler starten neutral). Zurück auf „Originalbild“ stellt die vorherigen Einstellungen wieder her. <b>Reset</b> setzt das Bild komplett aufs Original zurück (Kontur und Einzeichnungen bleiben).</div>
+    <div class="btns"><button id="btnDefaults">Standardwerte</button><button id="btnCompare">Original zeigen (<kbd>O</kbd>)</button></div>
     <div class="chk"><input type="checkbox" id="showClip"><label for="showClip">Überbelichtete Stellen rot markieren</label></div>
     <div class="note">Überbelichtete Stellen (z. B. Spiegelung vom nassen Schliff) enthalten keine Information mehr – die kann keine Bearbeitung zurückholen, nur ein neues Foto.</div>
   </details>
@@ -137,7 +143,7 @@ const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv.getContext('2d');
 const S={orig:null,angle:0,rot:0,rotated:null,crop:null,cropDraft:null,base:null,baseGray:null,baseClip:null,W:0,H:0,
   mask:[],maskClosed:false,maskSoft:null,enh:null,enhGray:null,grad:null,edgeCv:null,clipCv:null,
-  ann:[],scale:null,mode:'pan',view:{s:1,x:0,y:0},showOrig:false,draft:null,sel:null,hist:[],drag:null,mouse:null};
+  ann:[],scale:null,active:false,stages:[],srcGray:null,origData:null,fileName:'',mode:'pan',view:{s:1,x:0,y:0},showOrig:false,draft:null,sel:null,hist:[],drag:null,mouse:null};
 window.__S=S;
 
 /* ---------------- Dialoge ---------------- */
@@ -242,16 +248,23 @@ function gradient(u,w,h){
 
 /* ---------------- Laden / Geometrie ---------------- */
 function loadFile(f){
-  if(!f||!f.type.startsWith('image/'))return;
-  const url=URL.createObjectURL(f),img=new Image();
+  if(!f)return;
+  if(/\.(makro|json)$/i.test(f.name)){loadProjectFile(f);return;}
+  if(!f.type.startsWith('image/'))return;
+  const fr=new FileReader();fr.onload=()=>loadImageData(fr.result,f.name,null);fr.readAsDataURL(f);
+}
+function loadImageData(url,name,after){
+  const img=new Image();
+  img.onerror=()=>toast('Bild konnte nicht gelesen werden.');
   img.onload=()=>{
     const MAX=4000,sc=Math.min(1,MAX/Math.max(img.width,img.height));
     const c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
     c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    S.orig=c;S.angle=0;S.rot=0;S.crop=null;S.mask=[];S.maskClosed=false;S.ann=[];S.scale=null;S.hist=[];S.sel=null;S.draft=null;
+    S.orig=c;S.origData=url;S.fileName=name;S.angle=0;S.rot=0;S.crop=null;S.mask=[];S.maskClosed=false;S.ann=[];S.scale=null;S.hist=[];S.sel=null;S.draft=null;
     $('angle').value=0;$('angleO').textContent='0°';
-    $('imgInfo').textContent=`${f.name} · ${img.width}×${img.height} px`+(sc<1?` (auf ${c.width}×${c.height} verkleinert)`:'');
+    $('imgInfo').textContent=`${name} · ${img.width}×${img.height} px`+(sc<1?` (auf ${c.width}×${c.height} verkleinert)`:'');
     $('drop').classList.add('hide');updCalib();
+    if(after){after();return;}
     rebuildRotated();rebuildBase();fit();setMode('crop');
   };
   img.src=url;
@@ -275,6 +288,7 @@ function rebuildBase(){
   S.baseGray=new Float32Array(N);S.baseClip=new Uint8Array(N);
   for(let i=0,j=0;i<N;i++,j+=4){S.baseGray[i]=0.299*d[j]+0.587*d[j+1]+0.114*d[j+2];S.baseClip[i]=(d[j]>=250||d[j+1]>=250||d[j+2]>=250)?1:0;}
   S.gradBase=gradient(S.baseGray,c.w,c.h);
+  S.active=false;S.stages=[];S.srcGray=S.baseGray;$('srcMode').value='orig';
   buildMask();process(true);
 }
 async function geometryChanged(){
@@ -305,7 +319,14 @@ function process(now){
       const t0=performance.now();
       const W=S.W,H=S.H,N=W*H,m=S.maskSoft,bin=m?new Float32Array(N):null;
       if(m)for(let i=0;i<N;i++)bin[i]=m[i]>0.5?1:0;
-      const u=enhance(S.baseGray,W,H,bin,params());
+      if(!S.active){ // Bild unverändert lassen – nur Kantenkarte fürs Einzeichnen
+        S.enh=null;S.enhGray=null;
+        S.gradFull=S.gradBase;
+        if(m){const er=blurF(bin,W,H,Math.max(3,Math.max(W,H)/350));S.grad=new Float32Array(N);for(let i=0;i<N;i++)S.grad[i]=er[i]>0.97?S.gradBase[i]:0;}
+        else S.grad=S.gradBase;
+        buildOverlays();updState();$('busy').style.display='none';draw();S.lastMs=performance.now()-t0;return;
+      }
+      const u=enhance(S.srcGray||S.baseGray,W,H,bin,params());
       S.enhGray=u;
       const e=document.createElement('canvas');e.width=W;e.height=H;const ex=e.getContext('2d'),id=ex.createImageData(W,H),o=id.data;
       const mode=$('bgMode').value,bgv={black:10,dark:42,white:245}[mode];
@@ -320,7 +341,7 @@ function process(now){
         const er=blurF(bin,W,H,Math.max(3,Math.max(W,H)/350));S.grad=new Float32Array(N);
         for(let i=0;i<N;i++)S.grad[i]=er[i]>0.97?S.gradFull[i]:0;
       }else S.grad=S.gradFull;
-      buildOverlays();
+      buildOverlays();updState();
       $('busy').style.display='none';draw();
       S.lastMs=performance.now()-t0;
     },10);
@@ -338,6 +359,38 @@ function buildOverlays(){
   const c=document.createElement('canvas');c.width=W;c.height=H;const cx=c.getContext('2d'),cd=cx.createImageData(W,H),q=cd.data;
   for(let i=0,j=0;i<N;i++,j+=4){if(S.baseClip[i]&&(!m||m[i]>0.5)){q[j]=255;q[j+1]=30;q[j+2]=30;q[j+3]=200;}}
   cx.putImageData(cd,0,0);S.clipCv=c;
+}
+
+/* ---------------- Bildzustand ---------------- */
+function binMask(){if(!S.maskSoft)return null;const N=S.W*S.H,b=new Float32Array(N);for(let i=0;i<N;i++)b[i]=S.maskSoft[i]>0.5?1:0;return b;}
+function recomputeSource(){
+  let src=S.baseGray;const b=binMask();
+  for(const st of S.stages)src=Float32Array.from(enhance(src,S.W,S.H,b,st));
+  S.srcGray=src;
+}
+const NEUTRAL={flat:0,flatR:8,lo:0,hi:0,gamma:1,cl:0,tiles:6,dn:0,sh:0,shR:2};
+function setParams(p){for(const k in p){const el=$('p_'+k);if(!el)continue;el.value=p[k];el.nextElementSibling.textContent=el.value;}}
+function updState(){
+  $('stateInfo').textContent=!S.base?'':!S.active?'Bild unverändert (Original).':S.stages.length?'Aufbereitet – Regler arbeiten auf dem verbesserten Bild.':'Aufbereitet – Regler arbeiten auf dem Originalbild.';
+  $('btnApply').classList.toggle('on',!S.active);
+}
+function activate(){if(!S.active){S.active=true;}}
+function setSrcMode(v){
+  if(!S.base)return;
+  if(v==='enh'){
+    if(!S.active){toast('Erst aufbereiten – dann kann darauf weitergearbeitet werden.');$('srcMode').value='orig';return;}
+    if(S.stages.length)return;
+    S.stages=[params()];recomputeSource();setParams(NEUTRAL);process(true);
+  }else{
+    if(!S.stages.length)return;
+    const first=S.stages[0];S.stages=[];S.srcGray=S.baseGray;setParams(first);process(true);
+  }
+}
+function resetImage(){
+  if(!S.base)return;
+  S.active=false;S.stages=[];S.srcGray=S.baseGray;$('srcMode').value='orig';
+  for(const k in DEF){$(k).value=DEF[k];$(k).nextElementSibling.textContent=DEF[k];}
+  process(true);toast('Bild auf Original zurückgesetzt.');
 }
 
 /* ---------------- Auto-Optimierung ---------------- */
@@ -358,7 +411,7 @@ async function autoTune(){
   if(!S.maskSoft)toast('Tipp: Erst die Probe freistellen – dann optimiert Auto nur auf die Probe.');
   $('busy').style.display='block';$('busy').textContent='optimiere …';await new Promise(r=>setTimeout(r,20));
   const f=Math.max(1,Math.ceil(Math.max(S.W,S.H)/600)),sc=1/f;
-  const g=downsample(S.baseGray,S.W,S.H,f),w=g.w,h=g.h;
+  const g=downsample(S.srcGray||S.baseGray,S.W,S.H,f),w=g.w,h=g.h;
   let m=S.maskSoft?downsample(S.maskSoft,S.W,S.H,f).a:new Float32Array(w*h).fill(1);
   const bin=new Float32Array(w*h);for(let i=0;i<w*h;i++)bin[i]=m[i]>0.5?1:0;
   const er=blurF(bin,w,h,4),inner=new Uint8Array(w*h);for(let i=0;i<w*h;i++)inner[i]=er[i]>0.98?1:0;
@@ -378,7 +431,7 @@ async function autoTune(){
   }
   for(const k of ['flat','flatR','lo','hi','gamma','cl','tiles','dn','sh','shR']){const el=$('p_'+k);el.value=best[k];el.nextElementSibling.textContent=el.value;}
   $('busy').textContent='rechnet …';
-  process(true);toast('Auto-Einstellung übernommen – bei Bedarf von Hand nachregeln.');
+  activate();process(true);toast('Auto-Einstellung übernommen – bei Bedarf von Hand nachregeln.');
 }
 
 /* ---------------- Ansicht ---------------- */
@@ -623,7 +676,7 @@ function closeMask(){
   if(k>0){const A=dp(P.slice(0,k+1),1.2),B=dp(P.slice(k).concat([P[0]]),1.2);S.mask=A.concat(B.slice(1,-1));}
   S.maskClosed=true;afterMaskEdit();
 }
-function afterMaskEdit(){if(S.maskClosed){buildMask();process(true);}else{if(S.maskSoft){S.maskSoft=null;process(true);}else draw();}}
+function afterMaskEdit(){if(S.stages.length)recomputeSource();if(S.maskClosed){buildMask();process(true);}else{if(S.maskSoft){S.maskSoft=null;process(true);}else draw();}}
 
 window.addEventListener('keydown',e=>{
   if(e.target.matches('input,select,textarea'))return;
@@ -658,8 +711,8 @@ $('btnMaskClear').onclick=()=>{if(!S.mask.length)return;snapshot();S.mask=[];S.m
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(S.base)setMode(b.dataset.mode);});
 $('bgMode').onchange=()=>process(true);
 const DEF={};
-document.querySelectorAll('input[id^=p_]').forEach(inp=>{DEF[inp.id]=inp.value;const o=inp.nextElementSibling;const sh=()=>o.textContent=inp.value;sh();inp.oninput=()=>{sh();process();};});
-$('btnDefaults').onclick=()=>{for(const k in DEF){$(k).value=DEF[k];$(k).nextElementSibling.textContent=DEF[k];}process(true);};
+document.querySelectorAll('input[id^=p_]').forEach(inp=>{DEF[inp.id]=inp.value;const o=inp.nextElementSibling;const sh=()=>o.textContent=inp.value;sh();inp.oninput=()=>{sh();if(S.base){activate();process();}};});
+$('btnDefaults').onclick=()=>{for(const k in DEF){$(k).value=DEF[k];$(k).nextElementSibling.textContent=DEF[k];}if(S.base){activate();process(true);}};
 const cmp=$('btnCompare');cmp.onpointerdown=()=>{S.showOrig=true;draw();};cmp.onpointerup=cmp.onpointerleave=()=>{if(S.showOrig){S.showOrig=false;draw();}};
 $('showEdges').onchange=draw;$('showClip').onchange=draw;
 $('edgeT').oninput=()=>{$('edgeT').nextElementSibling.textContent=$('edgeT').value;if(S.grad){buildOverlays();draw();}};$('edgeT').nextElementSibling.textContent=$('edgeT').value;
@@ -671,7 +724,7 @@ window.addEventListener('resize',resize);
 /* ---------------- Export ---------------- */
 function niceBar(mmW){const c=[0.5,1,2,5,10,20,50,100];let b=c[0];for(const x of c)if(x<=mmW)b=x;return b;}
 function exportPNG(){
-  if(!S.enh)return;
+  if(!S.base){toast('Kein Bild geladen.');return;}
   const W=S.W,H=S.H,u=unit(),fs=Math.max(14,Math.round(W/60)),pad=Math.round(fs*0.9);
   const withOrig=$('exOrig').checked,withTitle=$('exTitle').checked,withNote=$('exNote').checked;
   const fields=[['Schliff-Nr.',$('f_nr').value],['Prüfstück / Auftrag',$('f_job').value],['Nahtart',$('f_naht').value],
@@ -687,7 +740,7 @@ function exportPNG(){
   const totalH=H+(withOrig?origH+fs*2.2+pad:0)+titleH+noteH+pad;
   const c=document.createElement('canvas');c.width=W;c.height=Math.round(totalH);const x=c.getContext('2d');
   x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
-  x.drawImage(S.enh,0,0);
+  x.drawImage(S.enh||S.base,0,0);
   S.ann.filter(a=>a.type!=='calib').forEach(a=>drawAnn(x,a,u,false));
   if($('exBar').checked&&S.scale){
     const bmm=niceBar(W*0.2/S.scale),bw=bmm*S.scale,bh=Math.max(4,u*2.2),bx=pad*1.5,by=H-pad*1.5-bh;
@@ -710,24 +763,86 @@ function exportPNG(){
       x.fillStyle='#000';x.font=`${fs}px system-ui,Segoe UI,sans-serif`;x.fillText(rem,pad+fs*0.4,y+fs*0.95,W-2*pad-fs);y+=cellH*0.9;}
   }
   if(noteTxt){y+=fs*0.5;x.fillStyle='#555';x.font=`italic ${Math.round(fs*0.7)}px system-ui,Segoe UI,sans-serif`;x.fillText(noteTxt,pad,y,W-2*pad);}
-  const name=`Makro_${($('f_nr').value||'Schliff').replace(/[^\w\-äöüÄÖÜß]+/g,'_')}.png`;
-  c.toBlob(async b=>{
-    const PW=window.pywebview&&window.pywebview.api;
-    if(PW&&PW.save_png){const fr=new FileReader();fr.onload=async()=>{try{const r=await PW.save_png(fr.result,name);if(r)toast('Gespeichert: '+r);}catch(err){toast('Speichern fehlgeschlagen: '+err);}};fr.readAsDataURL(b);return;}
-    if(DL){try{await DL.save({filename:name,data:b});toast('Gespeichert: '+name);}catch(err){if(err&&err.code!=='declined')toast('Speichern nicht möglich ('+(err.code||err)+')');}return;}
-    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-  },'image/png');
+  const name=`Makro_${safeName()}.png`;
+  c.toBlob(b=>saveBlob(b,name,'png'),'image/png');
 }
 function buildNote(){
-  const p=params(),st=[];
-  if(p.flat>0)st.push('Beleuchtungsausgleich');st.push('Tonwertspreizung');if(p.gamma!==1)st.push('Gamma');
-  if(p.cl>0)st.push('lokaler Kontrastausgleich (CLAHE)');if(p.dn>0)st.push('Rauschminderung');if(p.sh>0)st.push('Schärfung');
-  if(S.maskSoft)st.push('Hintergrund ausgeblendet');
   const hasAnn=S.ann.some(a=>a.type!=='calib');
+  if(!S.active)return 'Originalfoto ohne Bildbearbeitung (nur gedreht/zugeschnitten).'+(hasAnn?' Linien, Nummern und Maße nachträglich eingezeichnet.':'');
+  const st=[];
+  for(const p of S.stages.concat([params()])){
+  const add=t=>{if(!st.includes(t))st.push(t);};
+  if(p.flat>0)add('Beleuchtungsausgleich');add('Tonwertspreizung');if(p.gamma!==1)add('Gamma');
+  if(p.cl>0)add('lokaler Kontrastausgleich (CLAHE)');if(p.dn>0)add('Rauschminderung');if(p.sh>0)add('Schärfung');}
+  if(S.maskSoft)st.push('Hintergrund abgesetzt');
   return `Fotoaufbereitung: ${st.join(', ')} – global/lokal auf das Originalfoto angewendet, keine Bildinhalte hinzugefügt oder entfernt.`+(hasAnn?' Linien, Nummern und Maße nachträglich eingezeichnet.':'');
 }
 $('btnExport').onclick=exportPNG;
+function safeName(){return ($('f_nr').value||(S.fileName||'Schliff').replace(/\.[^.]+$/,'')).replace(/[^\w\-äöüÄÖÜß]+/g,'_');}
+function pyApi(){return window.pywebview&&window.pywebview.api;}
+function blobToDataURL(b){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(b);});}
+async function saveBlob(b,name,kind){
+  const PW=pyApi();
+  if(PW&&PW.save_file){
+    try{$('busy').style.display='block';$('busy').textContent='speichert …';
+      const r=await PW.save_file(await blobToDataURL(b),name,kind);
+      if(r)toast('Gespeichert: '+r);}
+    catch(err){toast('Speichern fehlgeschlagen: '+(err&&err.message||err));}
+    finally{$('busy').style.display='none';$('busy').textContent='rechnet …';}
+    return;
+  }
+  if(DL){try{await DL.save({filename:name,data:b});toast('Gespeichert: '+name);}catch(err){if(err&&err.code!=='declined')toast('Speichern nicht möglich ('+(err.code||err)+')');}return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast('Download gestartet: '+name);
+}
+
+/* ---------------- Projekt ---------------- */
+const UI_IDS=['bgMode','lw','nextNum','measLabel','edgeT','liveWire','maskWire','maskSnap','showEdges','showClip',
+  'f_nr','f_job','f_naht','f_gw','f_zw','f_etch','f_date','f_by','f_rem','exTitle','exOrig','exNote','exBar'];
+function projectData(){
+  const ui={};UI_IDS.forEach(id=>{const el=$(id);ui[id]=el.type==='checkbox'?el.checked:el.value;});
+  return {app:'MakroMaster',format:1,appVersion:APP_VERSION,saved:new Date().toISOString(),
+    image:{name:S.fileName,data:S.origData},rot:S.rot,angle:S.angle,crop:S.crop,
+    mask:S.mask,maskClosed:S.maskClosed,ann:S.ann,scale:S.scale,
+    active:S.active,stages:S.stages,params:params(),ui};
+}
+function saveProject(){
+  if(!S.base||!S.origData){toast('Kein Bild geladen.');return;}
+  const txt=JSON.stringify(projectData());
+  const inExe=!!(pyApi()&&pyApi().save_file);
+  saveBlob(new Blob([txt],{type:'application/json'}),`${safeName()}.${inExe?'makro':'json'}`,'makro');
+}
+function loadProjectFile(f){
+  const fr=new FileReader();
+  fr.onload=()=>{let d;try{d=JSON.parse(fr.result);}catch(e){toast('Keine gültige Projektdatei.');return;}
+    if(!d||d.app!=='MakroMaster'||!d.image||!d.image.data){toast('Keine gültige MakroMaster-Projektdatei.');return;}
+    applyProject(d);};
+  fr.readAsText(f);
+}
+function applyProject(d){
+  loadImageData(d.image.data,d.image.name||'Projekt',()=>{
+    S.rot=d.rot||0;S.angle=d.angle||0;$('angle').value=S.angle;$('angleO').textContent=fmt(S.angle)+'°';
+    S.crop=d.crop||null;
+    const ui=d.ui||{};UI_IDS.forEach(id=>{if(!(id in ui))return;const el=$(id);if(el.type==='checkbox')el.checked=!!ui[id];else el.value=ui[id];});
+    ['lw','edgeT'].forEach(id=>{$(id).nextElementSibling.textContent=$(id).value;});
+    rebuildRotated();rebuildBase();
+    S.mask=d.mask||[];S.maskClosed=!!d.maskClosed;S.ann=d.ann||[];S.scale=d.scale||null;updCalib();
+    buildMask();
+    S.stages=d.stages||[];S.active=!!d.active;$('srcMode').value=S.stages.length?'enh':'orig';
+    if(S.stages.length)recomputeSource();else S.srcGray=S.baseGray;
+    if(d.params)setParams(d.params);
+    S.hist=[];process(true);setMode('select');fit();
+    toast('Projekt geladen: '+(d.image.name||''));
+  });
+}
+$('btnProjSave').onclick=saveProject;
+$('btnProjOpen').onclick=()=>$('projFile').click();
+$('projFile').onchange=e=>{if(e.target.files[0])loadProjectFile(e.target.files[0]);e.target.value='';};
+$('file').addEventListener('click',e=>{e.target.value='';});
 $('btnAuto').onclick=autoTune;
+$('btnApply').onclick=()=>{if(!S.base)return;activate();process(true);};
+$('btnReset').onclick=resetImage;
+$('srcMode').onchange=()=>setSrcMode($('srcMode').value);
 
 const APP_VERSION='1.0.0';$('ver').textContent='v'+APP_VERSION;
 let DL=null;

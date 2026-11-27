@@ -23,12 +23,16 @@ Voraussetzung: Windows 10/11 mit *Microsoft Edge WebView2 Runtime*
 
 ## Ablauf
 
-1. **Foto laden** – Button oder per Drag & Drop.
+1. **Foto laden** – Button oder per Drag & Drop. Oder ein gespeichertes
+   **Projekt** (`.makro`) öffnen – es enthält das Originalfoto und alle Schritte,
+   das ursprüngliche Foto kann also gelöscht werden.
 2. **Ausrichten & Zuschneiden** – Probe waagrecht drehen, Rechteck aufziehen.
 3. **Probe freistellen** – rund um die Probe klicken (an jeder Ecke ein Punkt);
    dazwischen folgt die Kontur automatisch der Probenkante (Live-Wire).
-4. **Aufbereitung** – `Auto` sucht die Einstellung, bei der Schmelz- und
-   Lagengrenzen am deutlichsten werden; danach von Hand nachregeln.
+4. **Aufbereitung** – das Bild bleibt unverändert, bis `Aufbereiten`, `Auto`
+   oder ein Regler benutzt wird. `Auto` sucht die Einstellung, bei der Schmelz-
+   und Lagengrenzen am deutlichsten werden. „Regler wirken auf: verbessertes
+   Bild“ arbeitet auf dem aktuellen Stand weiter. `Reset` = zurück zum Original.
 5. **Einzeichnen** – Schmelzlinie / Lagengrenze (folgt der Kante), Raupennummern,
    Maße, Text. `Kalibrieren`: zwei Punkte mit bekanntem Abstand (Maßband,
    Blechdicke) → Maße in mm und Maßstabsbalken.
