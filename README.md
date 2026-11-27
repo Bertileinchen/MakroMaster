@@ -11,8 +11,12 @@ Hinweis auf die angewendeten Bearbeitungsschritte.
 
 ## Download
 
-Fertige `Makroschliff.exe` unter **Releases** (rechts auf der Repo-Seite).
+**[⬇ Makroschliff.exe – aktuelle Version](https://github.com/Bertileinchen/MakroMaster/releases/latest/download/Makroschliff.exe)**
+
+Dieser Link liefert immer die neueste Version. Ältere Versionen und Änderungen:
+[Releases](https://github.com/Bertileinchen/MakroMaster/releases).
 Keine Installation nötig – einfach starten. Alle Daten bleiben auf dem Rechner.
+Die installierte Version steht im Programm links oben.
 
 Voraussetzung: Windows 10/11 mit *Microsoft Edge WebView2 Runtime*
 (auf aktuellen Windows-Rechnern vorhanden).
@@ -56,14 +60,11 @@ Abhängigkeiten) und lässt sich auch direkt im Browser öffnen.
 
 ### EXE bauen
 
-Automatisch per GitHub Actions (`.github/workflows/build.yml`) bei jedem Push auf
-`main` (Download unter *Actions → letzter Lauf → Artifacts*).
-Ein Release mit der EXE entsteht durch einen Tag:
-
-```
-git tag v1.0.0
-git push origin v1.0.0
-```
+Automatisch per GitHub Actions (`.github/workflows/build.yml`): Jeder Push auf
+`main` baut die EXE und veröffentlicht sie als neues Release
+`v<VERSION>.<Build-Nr.>` (z. B. `v1.0.7`). Der Download-Link oben zeigt
+automatisch auf das neueste. Für einen größeren Versionssprung die Zahl in der
+Datei `VERSION` ändern (z. B. `1.1`).
 
 Lokal unter Windows:
 
