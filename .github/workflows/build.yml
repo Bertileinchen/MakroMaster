@@ -24,6 +24,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller==6.11.1
 
+      - name: Schnelltest Windows-Schnittstellen
+        run: python -c "import ctypes, makroschliff as m; n=ctypes.sizeof(m.OPENFILENAMEW); print('OPENFILENAMEW', n); assert n == 152; assert hasattr(ctypes.windll.comdlg32, 'GetSaveFileNameW'); print('ok')"
+
       - name: Versionsnummer setzen
         shell: bash
         run: |
